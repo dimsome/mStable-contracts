@@ -257,6 +257,15 @@ export const ALCX: Token = {
     quantityFormatter: "USD",
 }
 
+// LUSD
+export const LUSD: Token = {
+    symbol: "LUSD",
+    address: "0x5f98805A4E8be255a32880FDeC7F6728C6568bA0",
+    chain: Chain.mainnet,
+    quantityFormatter: "USD",
+    decimals: 18,
+}
+
 // BTC
 export const renBTC: Token = {
     symbol: "renBTC",
@@ -444,6 +453,7 @@ export const tokens = [
     HBTC,
     TBTC,
     alUSD,
+    LUSD,
     ALCX,
     PFRAX,
     PmUSD,
