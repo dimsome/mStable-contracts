@@ -38,6 +38,7 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
         uint256 totalAmount,
         uint256 userAmount
     );
+    event ReceivedEther(address sender, uint256 amount);
 
     /// @notice mAsset or Feeder Pool using the integration. eg fPmUSD/LUSD
     /// @dev LP has write access
@@ -214,8 +215,14 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
         } else {
             // Redeem Underlying bAsset amount
             // Change here to calculate shares
+
+            IERC20 b = IERC20(_bAsset);
+            uint256 prevBal = b.balanceOf(address(this));
+            // Change here to calculate shares
             uint256 sharesToWithdraw = _getShares(userWithdrawal);
             stabilityPool.withdraw(sharesToWithdraw);
+            uint256 newBal = b.balanceOf(address(this));
+            userWithdrawal = _min(userWithdrawal, newBal.sub(prevBal));
         }
 
         // Send redeemed bAsset to the receiver
@@ -255,6 +262,10 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
     function checkBalance(address _bAsset) external view returns (uint256) {
         require(_bAsset == bAsset, "Invalid bAsset");
         return bAssetBalance;
+    }
+
+    receive() external payable {
+        emit ReceivedEther(msg.sender, msg.value);
     }
 
     /***************************************
