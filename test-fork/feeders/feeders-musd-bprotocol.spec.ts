@@ -8,6 +8,7 @@ import { increaseTime } from "@utils/time"
 import { MAX_UINT256, ONE_DAY, ONE_WEEK, ZERO_ADDRESS, ONE_MIN } from "@utils/constants"
 import { Chain, mUSD, LUSD, MTA } from "tasks/utils/tokens"
 import { getChainAddress } from "tasks/utils/networkAddressFactory"
+import { assertBNClose, assertBNClosePercent } from "test-utils/assertions"
 import {
     IERC20,
     IERC20__factory,
@@ -23,8 +24,8 @@ import {
     BProtocolIntegration__factory,
     IBProtocolStabilityPool,
     IBProtocolStabilityPool__factory,
-    ILiquityStabilityPool,
-    ILiquityStabilityPool__factory,
+    IStabilityPool,
+    IStabilityPool__factory,
 } from "types/generated"
 
 import { impersonate } from "@utils/fork"
@@ -69,7 +70,7 @@ context("LUSD Feeder Pool integration to BProtocol", () => {
     let rewardsDistributor: RewardsDistributorEth
     let bProtocolIntegration: BProtocolIntegration
     let bProtocolStabilityPool: IBProtocolStabilityPool
-    let liquityStability: ILiquityStabilityPool
+    let liquityStability: IStabilityPool
 
     const firstMintAmount = simpleToExactAmount(10000)
     const secondMintAmount = simpleToExactAmount(2000)
@@ -120,7 +121,7 @@ context("LUSD Feeder Pool integration to BProtocol", () => {
         rewardsDistributor = RewardsDistributorEth__factory.connect(rewardsDistributorAddress, fundManager)
 
         // https://github.com/liquity/dev#stability-pool-functions---stabilitypoolsol
-        liquityStability = ILiquityStabilityPool__factory.connect(liquityStabilityPoolAddress, deployer)
+        liquityStability = IStabilityPool__factory.connect(liquityStabilityPoolAddress, deployer)
         tracer.nameTags[liquityStabilityPoolAddress] = "liquity StabilityPool"
     }
     context("Feeder Deploy without integration or vault", () => {
@@ -288,7 +289,13 @@ context("LUSD Feeder Pool integration to BProtocol", () => {
                 bProtocolIntegration = await deployContract<BProtocolIntegration>(
                     new BProtocolIntegration__factory(deployer),
                     "BProtocol LUSD integration",
-                    [getChainAddress("Nexus", chain), lusdFp.address, bProtocolStabilityPoolAddress, LUSD.address],
+                    [
+                        getChainAddress("Nexus", chain),
+                        lusdFp.address,
+                        bProtocolStabilityPoolAddress,
+                        liquityStabilityPoolAddress,
+                        LUSD.address,
+                    ],
                 )
 
                 tracer.nameTags[bProtocolIntegration.address] = "bProtocolIntegration"
@@ -297,7 +304,8 @@ context("LUSD Feeder Pool integration to BProtocol", () => {
                 expect(await bProtocolIntegration.lpAddress(), "Feeder Pool address").to.eq(lusdFp.address)
                 // TODO: Reward token?
                 // expect(await bProtocolIntegration.rewardToken(), "rewards token").to.eq(ALCX.address)
-                expect(await bProtocolIntegration.stabilityPool(), "BProtocol Stability Pool").to.eq(bProtocolStabilityPoolAddress)
+                expect(await bProtocolIntegration.bamm(), "BProtocol Stability Pool").to.eq(bProtocolStabilityPoolAddress)
+                expect(await bProtocolIntegration.stabilityPool(), "Stability Pool").to.eq(liquityStabilityPoolAddress)
                 expect(await bProtocolIntegration.bAsset(), "bAsset").to.eq(LUSD.address)
             })
             it("Initializing BProtocol integration", async () => {
@@ -389,10 +397,29 @@ context("LUSD Feeder Pool integration to BProtocol", () => {
             it("Withdraw LUSD to redeem from Integration", async () => {
                 // Cache should be empty
                 await increaseTime(50)
-                const withdrawAmount = simpleToExactAmount(1000)
+
+                const whaleLusdBefore = await lusdToken.balanceOf(lUsdWhaleAddress)
+                const lUsdBassetBefore = await lusdFp.getBasset(lusdToken.address)
+
+                const withdrawAmount = simpleToExactAmount(2000)
                 expect(await lusdToken.balanceOf(bProtocolIntegration.address), "Cache in Integration before").to.eq(0)
 
                 await lusdFp.connect(lUsdWhale).redeemExactBassets([LUSD.address], [withdrawAmount], firstMintAmount, lUsdWhaleAddress)
+
+                const lUsdBassetAfter = await lusdFp.getBasset(lusdToken.address)
+                const whaleLusdAfter = await lusdToken.balanceOf(lUsdWhaleAddress)
+
+                // expect(whaleLusdAfter.sub(whaleLusdBefore), "Balance change for Whale").to.eq(withdrawAmount)
+                assertBNClosePercent(whaleLusdAfter.sub(whaleLusdBefore), withdrawAmount, 0.01, "Balance change for Whale")
+
+                expect(lUsdBassetAfter.vaultData.vaultBalance, "LUSD after withdrawing").to.eq(
+                    lUsdBassetBefore.vaultData.vaultBalance.sub(withdrawAmount),
+                )
+
+                // expect(await lusdToken.balanceOf(bProtocolIntegration.address), "Cache in Integration after").to.lt(withdrawAmount)
+                // expect(await musdToken.balanceOf(lUsdWhaleAddress), "mUSD bal for Whale").to.eq(0)
+
+                // await bProtocolStabilityPool.connect(deployer).
             })
         })
     })

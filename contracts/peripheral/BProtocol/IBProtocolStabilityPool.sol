@@ -9,24 +9,21 @@ pragma solidity 0.8.6;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IBProtocolStabilityPool {
-    event Exit(uint256 val);
-    event Flee();
-    event Join(uint256 val);
-    event RebalanceSwap(
-        address indexed user,
-        uint256 lusdAmount,
-        uint256 ethAmount,
-        uint256 timestamp
-    );
-    event Tack(address indexed src, address indexed dst, uint256 wad);
-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
-    event UserDeposit(address indexed user, uint256 lusdAmount, uint256 numShares);
-    event UserWithdraw(
-        address indexed user,
-        uint256 lusdAmount,
-        uint256 ethAmount,
-        uint256 numShares
-    );
+    function A() external view returns (uint256);
+
+    function LUSD() external view returns (address);
+
+    function MAX_A() external view returns (uint256);
+
+    function MAX_FEE() external view returns (uint256);
+
+    function MIN_A() external view returns (uint256);
+
+    function PRECISION() external view returns (uint256);
+
+    function SP() external view returns (address);
+
+    function add(uint256 x, uint256 y) external pure returns (uint256 z);
 
     function balanceOf(address owner) external view returns (uint256 balance);
 
@@ -93,6 +90,12 @@ interface IBProtocolStabilityPool {
 
     function priceAggregator() external view returns (address);
 
+    function rdiv(uint256 x, uint256 y) external pure returns (uint256 z);
+
+    function rmul(uint256 x, uint256 y) external pure returns (uint256 z);
+
+    function rmulup(uint256 x, uint256 y) external pure returns (uint256 z);
+
     function setParams(uint256 _A, uint256 _fee) external;
 
     function share() external view returns (uint256);
@@ -122,11 +125,19 @@ interface IBProtocolStabilityPool {
         address destAddress,
         uint256,
         bool
-    ) external payable returns (bool);
+    ) external returns (bool);
+
+    function transferOwnership(address newOwner) external;
 
     function vat() external view returns (address);
 
+    function wdiv(uint256 x, uint256 y) external pure returns (uint256 z);
+
+    function wdivup(uint256 x, uint256 y) external pure returns (uint256 z);
+
     function withdraw(uint256 numShares) external;
+
+    function wmul(uint256 x, uint256 y) external pure returns (uint256 z);
 
     receive() external payable;
 }

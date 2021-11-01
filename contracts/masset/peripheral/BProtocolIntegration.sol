@@ -7,6 +7,7 @@ import { ImmutableModule } from "../../shared/ImmutableModule.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IBProtocolStabilityPool } from "../../peripheral/BProtocol/IBProtocolStabilityPool.sol";
+import { IStabilityPool } from "../../peripheral/BProtocol/IStabilityPool.sol";
 import { MassetHelpers } from "../../shared/MassetHelpers.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import { StableMath } from "../../shared/StableMath.sol";
@@ -44,7 +45,9 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
     /// @dev LP has write access
     address public immutable lpAddress;
     /// @notice BProtocol BAMM contract
-    IBProtocolStabilityPool public immutable stabilityPool;
+    IBProtocolStabilityPool public immutable bamm;
+    /// @notice LUSD StabilityPool contract
+    IStabilityPool public immutable stabilityPool;
     /// @notice base asset that is integrated to BProtocol stabilityPool. eg LUSD
     address public immutable bAsset;
     /// @notice amount that was deposited into the BProtocol Stability Pool integration
@@ -67,15 +70,18 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
     constructor(
         address _nexus,
         address _lp,
+        address payable _bamm,
         address payable _stabilityPool,
         address _bAsset
     ) ImmutableModule(_nexus) {
         require(_lp != address(0), "Invalid LP address");
+        require(_bamm != address(0), "Invalid bamm");
         require(_stabilityPool != address(0), "Invalid stabilityPool");
         require(_bAsset != address(0), "Invalid bAsset address");
 
         lpAddress = _lp;
-        stabilityPool = IBProtocolStabilityPool(_stabilityPool);
+        bamm = IBProtocolStabilityPool(_bamm);
+        stabilityPool = IStabilityPool(_stabilityPool);
         bAsset = _bAsset;
         bAssetBalance = 0;
     }
@@ -103,7 +109,7 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
 
     function _approveContracts() internal {
         // Approve bProtocol LUSD Stability Pool contract to transfer bAssets for deposits.
-        MassetHelpers.safeInfiniteApprove(bAsset, address(stabilityPool));
+        MassetHelpers.safeInfiniteApprove(bAsset, address(bamm));
 
         // TODO: Liquidator contract?
         // Approve Liquidator to transfer reward token when claiming rewards.
@@ -141,11 +147,11 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
         if (isTokenFeeCharged) {
             // If we charge a fee, account for it
             uint256 prevBal = this.checkBalance(_bAsset);
-            stabilityPool.deposit(_amount);
+            bamm.deposit(_amount);
             uint256 newBal = this.checkBalance(_bAsset);
             quantityDeposited = _min(quantityDeposited, newBal.sub(prevBal));
         } else {
-            stabilityPool.deposit(_amount);
+            bamm.deposit(_amount);
         }
         bAssetBalance = bAssetBalance.add(quantityDeposited);
 
@@ -209,7 +215,7 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
             uint256 prevBal = b.balanceOf(address(this));
             // Change here to calculate shares
             uint256 sharesToWithdraw = _getShares(userWithdrawal);
-            stabilityPool.withdraw(sharesToWithdraw);
+            bamm.withdraw(sharesToWithdraw);
             uint256 newBal = b.balanceOf(address(this));
             userWithdrawal = _min(userWithdrawal, newBal - prevBal);
         } else {
@@ -220,7 +226,7 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
             uint256 prevBal = b.balanceOf(address(this));
             // Change here to calculate shares
             uint256 sharesToWithdraw = _getShares(userWithdrawal);
-            stabilityPool.withdraw(sharesToWithdraw);
+            bamm.withdraw(sharesToWithdraw);
             uint256 newBal = b.balanceOf(address(this));
             userWithdrawal = _min(userWithdrawal, newBal.sub(prevBal));
         }
@@ -283,14 +289,21 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
      * @dev function to calculate shares per given amount
      */
     function _getShares(uint256 _quantity) internal view returns (uint256) {
-        uint256 totalShares = stabilityPool.balanceOf(address(this));
+        uint256 totalSupply = bamm.totalSupply();
+        uint256 integrationShares = bamm.balanceOf(address(this));
+        uint256 lusdTotal = stabilityPool.getCompoundedLUSDDeposit(address(bamm));
+
+        uint256 lusdBalance = (lusdTotal.mulTruncateCeil(integrationShares)).divPrecisely(
+            totalSupply
+        );
+
         console.log("Total shares: ");
-        console.log(totalShares);
+        console.log(integrationShares);
         console.log("Quantaty: ");
         console.log(_quantity);
         console.log("bAssetBalance: ");
-        console.log(bAssetBalance);
-        uint256 shares = (totalShares.divPrecisely(bAssetBalance)).mulTruncate(_quantity);
+        console.log(integrationShares);
+        uint256 shares = (integrationShares.divPrecisely(lusdBalance)).mulTruncateCeil(_quantity);
         console.log("Shares to withdraw: ");
         console.log(shares);
         return shares;
@@ -307,7 +320,7 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
         console.log(bAssetBalance);
         console.log(bAssetBalance / 1e18);
 
-        uint256 totalShares = stabilityPool.balanceOf(address(this));
+        uint256 totalShares = bamm.balanceOf(address(this));
         console.log("TotalShares after: ");
         console.log(totalShares);
         console.log(totalShares / 1e18);
@@ -325,10 +338,36 @@ contract BProtocolIntegration is Initializable, ImmutableModule, ReentrancyGuard
         console.log(bAssetBalance);
         console.log(bAssetBalance / 1e18);
 
-        uint256 totalShares = stabilityPool.balanceOf(address(this));
+        uint256 totalShares = bamm.balanceOf(address(this));
         console.log("TotalShares after: ");
         console.log(totalShares);
         console.log(totalShares / 1e18);
         console.log("/====== After");
+    }
+
+    function getBalances()
+        external
+        view
+        returns (
+            uint256,
+            uint256,
+            uint256,
+            uint256
+        )
+    {
+        uint256 balance = bamm.balanceOf(address(this));
+        uint256 totalSupply = bamm.totalSupply();
+
+        uint256 totalShares = bamm.balanceOf(address(this));
+
+        uint256 lusdTotal = stabilityPool.getCompoundedLUSDDeposit(address(bamm));
+        uint256 ethTotal = stabilityPool.getDepositorETHGain(address(bamm)) + address(bamm).balance;
+
+        uint256 lusdBalance = (lusdTotal * balance) / totalSupply;
+        uint256 ethBalance = (ethTotal * balance) / totalSupply;
+
+        uint256 lusdPrice = bamm.fetchPrice();
+
+        return (lusdBalance, ethBalance, totalShares, lusdPrice);
     }
 }
