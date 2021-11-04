@@ -4,14 +4,17 @@ import { DEAD_ADDRESS, ZERO_ADDRESS } from "@utils/constants"
 import { BN, simpleToExactAmount } from "@utils/math"
 import { Signer } from "ethers"
 import { formatEther } from "ethers/lib/utils"
+import { HardhatRuntimeEnvironment } from "hardhat/types/runtime"
 import {
     FeederPool,
+    NonPeggedFeederPool,
     BoostedVault,
     MockERC20__factory,
     MockInitializableToken__factory,
     AssetProxy__factory,
     MockERC20,
     FeederPool__factory,
+    NonPeggedFeederPool__factory,
     BoostedVault__factory,
     Masset__factory,
     BoostedDualVault,
@@ -20,12 +23,13 @@ import {
     BoostedDualVault__factory,
     StakingRewardsWithPlatformToken__factory,
     StakingRewards__factory,
+    IRedemptionPriceSnap__factory,
 } from "types/generated"
 import { deployContract } from "./deploy-utils"
 import { verifyEtherscan } from "./etherscan"
 import { getChain, getChainAddress } from "./networkAddressFactory"
 import { getSigner } from "./signerFactory"
-import { Chain, Token } from "./tokens"
+import { Token } from "./tokens"
 
 interface Config {
     a: BN
@@ -38,6 +42,7 @@ interface Config {
 export interface FeederData {
     mAsset: Token
     fAsset: Token
+    fAssetRedemptionPriceGetter?: string
     name: string
     symbol: string
     config: Config
@@ -73,7 +78,8 @@ export const deployFasset = async (
     return new MockERC20__factory(sender).attach(proxy.address)
 }
 
-export const deployFeederPool = async (signer: Signer, feederData: FeederData, chain = Chain.mainnet): Promise<FeederPool> => {
+export const deployFeederPool = async (signer: Signer, feederData: FeederData, hre: HardhatRuntimeEnvironment): Promise<FeederPool> => {
+    const chain = getChain(hre)
     const feederManagerAddress = getChainAddress("FeederManager", chain)
     const feederLogicAddress = getChainAddress("FeederLogic", chain)
 
@@ -83,10 +89,27 @@ export const deployFeederPool = async (signer: Signer, feederData: FeederData, c
         "contracts/feeders/FeederManager.sol:FeederManager": feederManagerAddress,
     }
 
-    const impl = await deployContract(new FeederPool__factory(linkedAddress, signer), "FeederPool", [
-        getChainAddress("Nexus", chain),
-        feederData.mAsset.address,
-    ])
+    let impl: FeederPool | NonPeggedFeederPool
+    let fpConstructorArgs: Array<string>
+
+    if (feederData.fAssetRedemptionPriceGetter) {
+        // Update fAssetRedemptionPriceGetter price oracle
+        await IRedemptionPriceSnap__factory.connect(feederData.fAssetRedemptionPriceGetter, signer).updateSnappedPrice()
+        fpConstructorArgs = [getChainAddress("Nexus", chain), feederData.mAsset.address, feederData.fAssetRedemptionPriceGetter]
+        impl = await deployContract(new NonPeggedFeederPool__factory(linkedAddress, signer), "NonPeggedFeederPool", fpConstructorArgs)
+    } else {
+        fpConstructorArgs = [getChainAddress("Nexus", chain), feederData.mAsset.address]
+        impl = await deployContract(new FeederPool__factory(linkedAddress, signer), "FeederPool", fpConstructorArgs)
+    }
+
+    await verifyEtherscan(hre, {
+        address: impl.address,
+        constructorArguments: fpConstructorArgs,
+        libraries: {
+            FeederManager: feederManagerAddress,
+            FeederLogic: feederLogicAddress,
+        },
+    })
 
     // Initialization Data
     const mAsset = Masset__factory.connect(feederData.mAsset.address, signer)
@@ -203,12 +226,6 @@ export const deployVault = async (
         proxyAdminAddress,
         initializeData,
     ])
-
-    await verifyEtherscan(hre, {
-        address: proxy.address,
-        contract: "contracts/upgradability/Proxies.sol:AssetProxy",
-        constructorArguments: [vault.address, proxyAdminAddress, initializeData],
-    })
 
     return vault.attach(proxy.address)
 }

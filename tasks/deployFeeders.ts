@@ -17,7 +17,7 @@ import { ALCX, alUSD, BUSD, CREAM, cyMUSD, GUSD, mUSD, tokens } from "./utils/to
 import { deployContract, logTxDetails } from "./utils/deploy-utils"
 import { getSigner } from "./utils/signerFactory"
 import { deployFeederPool, deployVault, FeederData, VaultData } from "./utils/feederUtils"
-import { getChain, getChainAddress } from "./utils/networkAddressFactory"
+import { getChain, getChainAddress, resolveToken } from "./utils/networkAddressFactory"
 
 task("deployFeederPool", "Deploy Feeder Pool")
     .addParam("masset", "Token symbol of mAsset. eg mUSD or PmUSD for Polygon", "mUSD", types.string)
@@ -30,10 +30,8 @@ task("deployFeederPool", "Deploy Feeder Pool")
         const signer = await getSigner(hre, taskArgs.speed)
         const chain = getChain(hre)
 
-        const mAsset = tokens.find((t) => t.symbol === taskArgs.masset)
-        if (!mAsset) throw Error(`Could not find mAsset token with symbol ${taskArgs.masset}`)
-        const fAsset = tokens.find((t) => t.symbol === taskArgs.fasset)
-        if (!fAsset) throw Error(`Could not find Feeder Pool token with symbol ${taskArgs.fasset}`)
+        const mAsset = resolveToken(taskArgs.masset, chain)
+        const fAsset = resolveToken(taskArgs.fasset, chain)
 
         if (taskArgs.a < 10 || taskArgs.min > 5000) throw Error(`Invalid amplitude coefficient (A) ${taskArgs.a}`)
         if (taskArgs.min < 0 || taskArgs.min > 50) throw Error(`Invalid min limit ${taskArgs.min}`)
@@ -54,7 +52,47 @@ task("deployFeederPool", "Deploy Feeder Pool")
         }
 
         // Deploy Feeder Pool
-        await deployFeederPool(signer, poolData, chain)
+        await deployFeederPool(signer, poolData, hre)
+    })
+
+// hh --config tasks-fork.config.ts --network hardhat deployNonPeggedFeederPool --masset mUSD --fasset RAI
+task("deployNonPeggedFeederPool", "Deploy Non Pegged Feeder Pool")
+    .addParam("masset", "Token symbol of mAsset. eg mUSD or PmUSD for Polygon", "mUSD", types.string)
+    .addParam("fasset", "Token symbol of Feeder Pool asset. eg GUSD, WBTC, PFRAX for Polygon", "alUSD", types.string)
+    .addOptionalParam("a", "Amplitude coefficient (A)", 100, types.int)
+    .addOptionalParam("min", "Minimum asset weight of the basket as a percentage. eg 10 for 10% of the basket.", 10, types.int)
+    .addOptionalParam("max", "Maximum asset weight of the basket as a percentage. eg 90 for 90% of the basket.", 90, types.int)
+    .addOptionalParam("speed", "Defender Relayer speed param: 'safeLow' | 'average' | 'fast' | 'fastest'", "fast", types.string)
+    .setAction(async (taskArgs, hre) => {
+        const signer = await getSigner(hre, taskArgs.speed)
+        const chain = getChain(hre)
+
+        const mAsset = resolveToken(taskArgs.masset, chain)
+        const fAsset = resolveToken(taskArgs.fasset, chain)
+
+        if (taskArgs.a < 10 || taskArgs.min > 5000) throw Error(`Invalid amplitude coefficient (A) ${taskArgs.a}`)
+        if (taskArgs.min < 0 || taskArgs.min > 50) throw Error(`Invalid min limit ${taskArgs.min}`)
+        if (taskArgs.max < 50 || taskArgs.max > 100) throw Error(`Invalid max limit ${taskArgs.min}`)
+
+        if (!fAsset.priceGetter) throw Error(`Token ${fAsset.symbol} does not have a priceGetter`)
+
+        const poolData: FeederData = {
+            mAsset,
+            fAsset,
+            fAssetRedemptionPriceGetter: fAsset.priceGetter,
+            name: `${mAsset.symbol}/${fAsset.symbol} Feeder Pool`,
+            symbol: `fP${mAsset.symbol}/${fAsset.symbol}`,
+            config: {
+                a: taskArgs.a,
+                limits: {
+                    min: simpleToExactAmount(taskArgs.min, 16),
+                    max: simpleToExactAmount(taskArgs.max, 16),
+                },
+            },
+        }
+
+        // Deploy Feeder Pool
+        await deployFeederPool(signer, poolData, hre)
     })
 
 task("deployAlcxInt", "Deploy Alchemix integration contract for alUSD Feeder Pool")
@@ -80,6 +118,9 @@ task("deployAlcxInt", "Deploy Alchemix integration contract for alUSD Feeder Poo
         console.log(`migrateBassets data:\n${migrateData}`)
     })
 
+// vault:
+// // hh --config tasks-fork.config.ts --network hardhat deployVault --name "mUSD/RAI fPool Vault" --symbol v-fPmUSD/RAI
+//                                     --boosted true --stakingToken mUSD --rewardToken MTA --dualRewardToken FLX --price ?
 task("deployVault", "Deploy Feeder Pool with boosted dual vault")
     .addParam("name", "Token name of the vault. eg mUSD/alUSD fPool Vault", undefined, types.string)
     .addParam("symbol", "Token symbol of the vault. eg v-fPmUSD/alUSD", undefined, types.string)
@@ -98,7 +139,7 @@ task("deployVault", "Deploy Feeder Pool with boosted dual vault")
         const chain = getChain(hre)
 
         if (taskArgs.name?.length < 4) throw Error(`Invalid token name ${taskArgs.name}`)
-        if (taskArgs.symbol?.length <= 0 || taskArgs.symbol?.length > 14) throw Error(`Invalid token symbol ${taskArgs.name}`)
+        if (taskArgs.symbol?.length <= 0 || taskArgs.symbol?.length > 16) throw Error(`Invalid token symbol ${taskArgs.name}`)
         if (taskArgs.boosted === undefined) throw Error(`Invalid boolean boost ${taskArgs.boosted}`)
 
         const stakingToken = tokens.find((t) => t.symbol === taskArgs.stakingToken && t.chain === chain)

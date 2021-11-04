@@ -12,7 +12,7 @@ task("distribute-mta-mainnet", "Distributes MTA rewards on Mainnet")
         const signerAddress = await signer.getAddress()
         const rewardSymbol = MTA.symbol
         const vaultsOrPools: Array<Token | ContractNames> = [MTA, mBPT, mUSD, mBTC, alUSD, BUSD, GUSD, HBTC, TBTC]
-        const mtaAmounts = [32500, 20000, 14933.23, 6633.17, 12954.38, 18288.1, 22244.11, 19791.17, 12987.84]
+        const mtaAmounts = [32500, 20000, 9218.49, 4512.31, 5774.36, 12444.89, 18320.08, 12559.79, 5824.08]
         const vaultNames = [
             "Staking V2 MTA   ",
             "Staking V2 mBPT  ",
@@ -72,7 +72,7 @@ task("distribute-mta-polygon", "Distributes MTA and Matic rewards on Polygon")
         const signerAddress = await signer.getAddress()
         const rewardSymbol = PMTA.symbol
         const vaultsOrPools: Array<Token | ContractNames> = [PmUSD]
-        const mtaAmounts = [17360]
+        const mtaAmounts = [15000]
         const platformAmounts = []
 
         // Create a comma separated list of token symbols and amounts

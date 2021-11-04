@@ -25,6 +25,7 @@ export interface Token {
     vault?: string
     savings?: string // interest-bearing savings contracts
     platformTokenVendor?: string // hold WMATIC on Polygon's v-imUSD vault
+    priceGetter?: string // Contract for price of asset, used for NonPeggedFeederPool
 }
 
 export function isToken(asset: unknown): asset is Token {
@@ -108,7 +109,7 @@ export const sUSD: Token = {
     address: "0x57Ab1ec28D129707052df4dF418D58a2D46d5f51",
     chain: Chain.mainnet,
     platform: Platform.Aave,
-    integrator: "0xb9b0cfa90436c3fcbf8d8eb6ed8d0c2e3da47ca9", // Old Aave V2
+    integrator: "0xA2a3CAe63476891AB2d640d9a5A800755Ee79d6E",
     liquidityProvider: "0x35f6B052C598d933D69A4EEC4D04c73A191fE6c2", // aSUSD
     decimals: 18,
     quantityFormatter: "USD",
@@ -207,6 +208,31 @@ export const BUSD: Token = {
     parent: "mUSD",
     feederPool: "0xfE842e95f8911dcc21c943a1dAA4bd641a1381c6",
     vault: "0xD124B55f70D374F58455c8AEdf308E52Cf2A6207",
+}
+
+// NonPeggedFeederPool contains priceGetter
+export const RAI: Token = {
+    symbol: "RAI",
+    address: "0x03ab458634910aad20ef5f1c8ee96f1d6ac54919",
+    chain: Chain.mainnet,
+    platform: Platform.Aave,
+    integrator: "",
+    liquidityProvider: "0xc9bc48c72154ef3e5425641a3c747242112a46af", // aRAI,
+    decimals: 18,
+    quantityFormatter: "USD",
+    parent: "mUSD",
+    feederPool: "",
+    vault: "",
+    priceGetter: "0x07210B8871073228626AB79c296d9b22238f63cE",
+}
+
+// FLX token for RAI
+export const FLX: Token = {
+    symbol: "FLX",
+    address: "0x6243d8cea23066d098a15582d81a598b4e8391f4",
+    chain: Chain.mainnet,
+    decimals: 18,
+    quantityFormatter: "USD",
 }
 
 // USD Feeder Pool Assets on Mainnet
@@ -315,6 +341,17 @@ export const TBTC: Token = {
     quantityFormatter: "BTC",
     feederPool: "0xb61A6F928B3f069A68469DDb670F20eEeB4921e0",
     vault: "0x760ea8CfDcC4e78d8b9cA3088ECD460246DC0731",
+}
+
+export const TBTCv2: Token = {
+    symbol: "tBTCv2",
+    address: "0x18084fbA666a33d37592fA2633fD49a74DD93a88",
+    chain: Chain.mainnet,
+    decimals: 18,
+    parent: "mBTC",
+    quantityFormatter: "BTC",
+    feederPool: "0xc3280306b6218031E61752d060b091278d45c329",
+    vault: "0x97E2a2F97A2E9a4cFB462a49Ab7c8D205aBB9ed9",
 }
 
 export const MTA: Token = {
@@ -435,6 +472,9 @@ export const RmBPT: Token = {
 }
 
 export const tokens = [
+    AAVE,
+    stkAAVE,
+    COMP,
     MTA,
     PMTA,
     RMTA,
@@ -447,11 +487,14 @@ export const tokens = [
     DAI,
     GUSD,
     BUSD,
+    RAI,
+    FLX,
     renBTC,
     sBTC,
     WBTC,
     HBTC,
     TBTC,
+    TBTCv2,
     alUSD,
     LUSD,
     ALCX,

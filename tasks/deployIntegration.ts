@@ -4,11 +4,13 @@ import "tsconfig-paths/register"
 
 import { subtask, task, types } from "hardhat/config"
 import {
+    AaveV2Integration,
     AaveV2Integration__factory,
     DelayedProxyAdmin__factory,
     Liquidator,
     Liquidator__factory,
     Masset__factory,
+    FeederPool__factory,
     PAaveIntegration,
     PAaveIntegration__factory,
 } from "types/generated"
@@ -17,8 +19,9 @@ import { encodeUniswapPath } from "@utils/peripheral/uniswap"
 import { ZERO_ADDRESS } from "@utils/constants"
 import { deployContract, logTxDetails } from "./utils/deploy-utils"
 import { AAVE, ALCX, Chain, COMP, DAI, stkAAVE, tokens } from "./utils/tokens"
-import { getChain, getChainAddress, resolveAddress } from "./utils/networkAddressFactory"
+import { getChain, getChainAddress, resolveAddress, resolveToken } from "./utils/networkAddressFactory"
 import { getSigner } from "./utils/signerFactory"
+import { verifyEtherscan } from "./utils/etherscan"
 
 task("integration-aave-deploy", "Deploys an instance of AaveV2Integration contract")
     .addParam(
@@ -36,16 +39,28 @@ task("integration-aave-deploy", "Deploys an instance of AaveV2Integration contra
         const nexusAddress = getChainAddress("Nexus", chain)
         const platformAddress = getChainAddress("AaveLendingPoolAddressProvider", chain)
 
+        const bAsset = resolveToken(taskArgs.asset, chain)
+        if (!bAsset.liquidityProvider) throw Error(`No aToken address provided for token: ${taskArgs.asset}`)
+
         const liquidityProviderAddress = resolveAddress(taskArgs.asset, chain)
         const rewardsTokenAddress = resolveAddress(taskArgs.rewards, chain)
 
+        const constructorArguments = [nexusAddress, liquidityProviderAddress, platformAddress, rewardsTokenAddress]
+
         // Deploy
-        await deployContract(new AaveV2Integration__factory(signer), "AaveV2Integration", [
-            nexusAddress,
-            liquidityProviderAddress,
-            platformAddress,
-            rewardsTokenAddress,
-        ])
+        const integration = await deployContract<AaveV2Integration>(
+            new AaveV2Integration__factory(signer),
+            "AaveV2Integration",
+            constructorArguments,
+        )
+
+        const tx = await integration.initialize([bAsset.address], [bAsset.liquidityProvider])
+        await logTxDetails(tx, "AaveIntegrationV2.initialize")
+
+        await verifyEtherscan(hre, {
+            address: integration.address,
+            constructorArguments,
+        })
     })
 
 task("integration-paave-deploy", "Deploys mUSD and mBTC instances of PAaveIntegration")
@@ -86,7 +101,7 @@ task("integration-paave-deploy", "Deploys mUSD and mBTC instances of PAaveIntegr
         const approveRewardTokenData = integration.interface.encodeFunctionData("approveRewardToken")
         console.log(`\napproveRewardToken data: ${approveRewardTokenData}`)
 
-        const mAsset = await Masset__factory.connect(liquidityProviderAddress, deployer)
+        const mAsset = Masset__factory.connect(liquidityProviderAddress, deployer)
 
         for (const bAsset of bAssets) {
             const migrateData = mAsset.interface.encodeFunctionData("migrateBassets", [[bAsset.address], integration.address])
@@ -109,7 +124,7 @@ subtask("liquidator-deploy", "Deploys new Liquidator contract")
         const uniswapQuoterV3Address = getChainAddress("UniswapQuoterV3", chain)
 
         // Deploy the new implementation
-        const liquidatorImpl = await deployContract<Liquidator>(new Liquidator__factory(signer), "Liquidator", [
+        const constructorArguments = [
             nexusAddress,
             stkAAVE.address,
             AAVE.address,
@@ -117,7 +132,8 @@ subtask("liquidator-deploy", "Deploys new Liquidator contract")
             uniswapQuoterV3Address,
             COMP.address,
             ALCX.address,
-        ])
+        ]
+        const liquidatorImpl = await deployContract<Liquidator>(new Liquidator__factory(signer), "Liquidator", constructorArguments)
 
         const delayedProxyAdmin = DelayedProxyAdmin__factory.connect(delayedAdminAddress, signer)
 
@@ -129,6 +145,11 @@ subtask("liquidator-deploy", "Deploys new Liquidator contract")
             upgradeData,
         ])
         console.log(`\ndelayedProxyAdmin.proposeUpgrade to ${delayedAdminAddress}, data:\n${proposeUpgradeData}`)
+
+        await verifyEtherscan(hre, {
+            address: liquidatorImpl.address,
+            constructorArguments,
+        })
     })
 
 task("liquidator-deploy").setAction(async (_, __, runSuper) => {
