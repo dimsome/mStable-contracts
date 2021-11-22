@@ -7,6 +7,7 @@ import "solidity-coverage"
 import "hardhat-abi-exporter"
 import "@nomiclabs/hardhat-etherscan"
 import "hardhat-tracer"
+import "hardhat-interface-generator"
 
 import "ts-node/register"
 import "tsconfig-paths/register"

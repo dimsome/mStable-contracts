@@ -26,6 +26,7 @@ export interface Token {
     savings?: string // interest-bearing savings contracts
     platformTokenVendor?: string // hold WMATIC on Polygon's v-imUSD vault
     priceGetter?: string // Contract for price of asset, used for NonPeggedFeederPool
+    staking?: string // Contract that allows staking of this token. Used in PCVModule
 }
 
 export function isToken(asset: unknown): asset is Token {
@@ -287,6 +288,15 @@ export const ALCX: Token = {
 export const LUSD: Token = {
     symbol: "LUSD",
     address: "0x5f98805A4E8be255a32880FDeC7F6728C6568bA0",
+    chain: Chain.mainnet,
+    quantityFormatter: "USD",
+    decimals: 18,
+}
+
+export const LQTY: Token = {
+    symbol: "LQTY",
+    address: "0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D",
+    staking: "0x4f9Fbb3f1E99B56e0Fe2892e623Ed36A76Fc605d",
     chain: Chain.mainnet,
     quantityFormatter: "USD",
     decimals: 18,

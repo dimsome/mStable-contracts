@@ -64,6 +64,8 @@ contract Liquidator is ILiquidator, Initializable, ModuleKeysStorage, ImmutableM
     address public immutable compToken;
     /// @notice Alchemix (ALCX) address
     address public immutable alchemixToken;
+    /// @notice Liquity (LQTY) address
+    address public immutable lqtyToken;
 
     // No longer used
     struct DeprecatedLiquidation {
@@ -94,7 +96,8 @@ contract Liquidator is ILiquidator, Initializable, ModuleKeysStorage, ImmutableM
         address _uniswapRouter,
         address _uniswapQuoter,
         address _compToken,
-        address _alchemixToken
+        address _alchemixToken,
+        address _lqtyToken
     ) ImmutableModule(_nexus) {
         require(_stkAave != address(0), "Invalid stkAAVE address");
         stkAave = _stkAave;
@@ -113,6 +116,9 @@ contract Liquidator is ILiquidator, Initializable, ModuleKeysStorage, ImmutableM
 
         require(_alchemixToken != address(0), "Invalid ALCX address");
         alchemixToken = _alchemixToken;
+
+        require(_lqtyToken != address(0), "Invalid LQTY address");
+        lqtyToken = _lqtyToken;
     }
 
     /**
@@ -122,6 +128,7 @@ contract Liquidator is ILiquidator, Initializable, ModuleKeysStorage, ImmutableM
     function initialize() external initializer {
         IERC20(aaveToken).safeApprove(address(uniswapRouter), type(uint256).max);
         IERC20(compToken).safeApprove(address(uniswapRouter), type(uint256).max);
+        IERC20(alchemixToken).safeApprove(address(uniswapRouter), type(uint256).max);
     }
 
     /**
@@ -129,7 +136,7 @@ contract Liquidator is ILiquidator, Initializable, ModuleKeysStorage, ImmutableM
      * @dev to be called via the proxy proposeUpgrade function, not the constructor.
      */
     function upgrade() external {
-        IERC20(alchemixToken).safeApprove(address(uniswapRouter), type(uint256).max);
+        IERC20(lqtyToken).safeApprove(address(uniswapRouter), type(uint256).max);
     }
 
     /***************************************
